@@ -100,9 +100,25 @@ download() {
     EXITCODE=$?
     if [ $EXITCODE -ne 0 ]; then
       echo ""
-      echo "Failed to download $1. Exitcode $EXITCODE. Retrying in 10 seconds"
-      sleep 10
-      curl -L --silent -o "$DOWNLOAD_PATH/$DOWNLOAD_FILE" "$1"
+      echo "Failed to download $1. Exitcode $EXITCODE. Retrying in 60 seconds"
+      sleep 60
+      curl -v -L -o "$DOWNLOAD_PATH/$DOWNLOAD_FILE" "$1"
+    fi
+
+    EXITCODE=$?
+    if [ $EXITCODE -ne 0 ]; then
+      echo ""
+      echo "Failed to download $1. Exitcode $EXITCODE. Retrying in 60 seconds"
+      sleep 60
+      curl -v -L -o "$DOWNLOAD_PATH/$DOWNLOAD_FILE" "$1"
+    fi
+
+    EXITCODE=$?
+    if [ $EXITCODE -ne 0 ]; then
+      echo ""
+      echo "Failed to download $1. Exitcode $EXITCODE. Retrying in 60 seconds"
+      sleep 60
+      curl -v -L -o "$DOWNLOAD_PATH/$DOWNLOAD_FILE" "$1"
     fi
 
     EXITCODE=$?
