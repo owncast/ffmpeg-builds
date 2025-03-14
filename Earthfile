@@ -27,7 +27,7 @@ build:
 
     # Test the binary
     RUN ./workspace/bin/ffmpeg -version
-    
+
     # Save artifacts with explicit paths
     RUN tar -czf /ffmpeg-$TARGETARCH.tar.gz -C /app/workspace/bin ffmpeg
     SAVE ARTIFACT /ffmpeg-$TARGETARCH.tar.gz AS LOCAL ./builds/ffmpeg-$TARGETARCH.tar.gz
@@ -50,10 +50,6 @@ all:
     BUILD +runtime
 
 multi-platform:
-    # Build for both architectures in parallel
-    BUILD --platform=linux/amd64 --build-arg SKIPINSTALL=yes +build
-    BUILD --platform=linux/arm64 --build-arg SKIPINSTALL=yes +build
-    
-    # Create runtime images for each platform
-    BUILD --platform=linux/amd64 +runtime
-    BUILD --platform=linux/arm64 +runtime
+    BUILD --platform=linux/amd64 --platform=linux/arm64 --build-arg SKIPINSTALL=yes +build
+    BUILD --platform=linux/amd64 --platform=linux/arm64 +runtime
+
