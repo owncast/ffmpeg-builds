@@ -34,6 +34,9 @@ jobs:
         with:
           platforms: all # Installs QEMU for all architectures
 
+      - name: Create builds builder
+        run: mkdir -p ./builds
+
       - name: Setup Earthly
         uses: earthly/actions-setup@v1
         with:
@@ -41,14 +44,15 @@ jobs:
           version: latest
 
       - name: Build with Earthly
-        run: earthly --ci +multi-platform
+        run: earthly --output --ci +multi-platform
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: false
+          generate_release_notes: true
           tag_name: ${{ steps.get-timestamp.outputs.timestamp }}
+          body: Updated static FFmpeg builds
           files: |
-            builds/*.tar.gz
+            ./builds/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
