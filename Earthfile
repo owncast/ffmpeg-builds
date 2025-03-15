@@ -31,7 +31,7 @@ build:
 
     # Save artifacts with explicit paths
     RUN tar -czf /ffmpeg$FFMPEG_VERSION-$TARGETARCH.tar.gz -C /app/workspace/bin ffmpeg
-    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH.tar.gz AS LOCAL ./builds/ffmpeg-$TARGETARCH.tar.gz
+    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-$TARGETARCH.tar.gz
     
 runtime:
     FROM ubuntu:24.04
