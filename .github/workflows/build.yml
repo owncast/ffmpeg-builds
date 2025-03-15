@@ -7,9 +7,27 @@ jobs:
   build-and-release:
     runs-on: self-hosted
     timeout-minutes: 10000
+    outputs:
+      timestamp: ${{ steps.get-timestamp.outputs.timestamp }}
+
     steps:
+      - name: Get current timestamp
+        id: get-timestamp
+        run: echo "timestamp=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_OUTPUT
+
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Create and push tag
+        run: |
+          git config user.name owncast-ffmpeg-builder
+          git config user.email github-actions@github.com
+          git tag ${{ steps.get-timestamp.outputs.timestamp }}
+          git push --tags
+          git checkout ${{ steps.get-timestamp.outputs.timestamp }}
+
+      - name: Fetch tags again to ensure latest tag is available
+        run: git fetch --tags
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -26,9 +44,10 @@ jobs:
         run: earthly --ci +multi-platform
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          generate_release_notes: false
+          tag_name: ${{ steps.get-timestamp.outputs.timestamp }}
           files: |
             builds/*.tar.gz
         env:
