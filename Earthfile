@@ -3,6 +3,7 @@ VERSION 0.8
 build:
     FROM ubuntu:24.04
     ARG TARGETARCH  # Built-in Earthly variable
+    ARG FFMPEG_VERSION=7.1
     WORKDIR /app
 
     # Install build dependencies
@@ -23,14 +24,14 @@ build:
 
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
-    RUN ./build-ffmpeg --build
+    RUN ./build-ffmpeg --build --full-static 
 
     # Test the binary
     RUN ./workspace/bin/ffmpeg -version
 
     # Save artifacts with explicit paths
-    RUN tar -czf /ffmpeg-$TARGETARCH.tar.gz -C /app/workspace/bin ffmpeg
-    SAVE ARTIFACT /ffmpeg-$TARGETARCH.tar.gz AS LOCAL ./builds/ffmpeg-$TARGETARCH.tar.gz
+    RUN tar -czf /ffmpeg$FFMPEG_VERSION-$TARGETARCH.tar.gz -C /app/workspace/bin ffmpeg
+    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH.tar.gz AS LOCAL ./builds/ffmpeg-$TARGETARCH.tar.gz
     
 runtime:
     FROM ubuntu:24.04
