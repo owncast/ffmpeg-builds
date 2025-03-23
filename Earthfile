@@ -13,7 +13,7 @@ build:
             build-essential \
             curl \
             ca-certificates \
-            libva-dev \
+            libva-dev vainfo \
             python3 \
             python-is-python3 \
             ninja-build \
@@ -24,7 +24,7 @@ build:
 
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
-    RUN ./build-ffmpeg --build --full-static 
+    RUN ./build-ffmpeg --build --enable-gpl-and-non-free 
 
     # Test the binary
     RUN ./workspace/bin/ffmpeg -version
@@ -41,7 +41,7 @@ runtime:
     
     RUN --mount=type=cache,target=/var/cache/apt \
         apt-get update && \
-        apt-get -y install libva-drm2 && \
+        apt-get -y install libva-drm2 libva-dev vainfo && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
