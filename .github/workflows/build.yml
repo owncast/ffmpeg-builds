@@ -24,7 +24,6 @@ jobs:
           git config user.email github-actions@github.com
           git tag ${{ steps.get-timestamp.outputs.timestamp }}
           git push --tags
-          git checkout ${{ steps.get-timestamp.outputs.timestamp }}
 
       - name: Fetch tags again to ensure latest tag is available
         run: git fetch --tags
