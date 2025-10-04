@@ -20,12 +20,13 @@ This repository is a fork of [ffmpeg-build-script](https://github.com/markus-per
 
 1. Install [Earthly](https://earthly.dev/get-earthly) build tools.
 2. Install [QEMU](https://www.qemu.org/download/) for [cross-compilation](https://docs.earthly.dev/docs/guides/multi-platform#prerequisites-for-emulation).
-3. run `earthly +multi-platform` to build for amd64 and arm64 architectures.
-4. The build archives will be available in the `builds` directory.
+3. run `earthly --ci +multi-platform` to build for amd64 and arm64 architectures.
+4. Wait.
+5. The build archives will be available in the `builds` directory.
 
 ## VAAPI Support
 
-This build will support VAAPI hardware acceleration on Intel and AMD GPUs. However, the machine running the binary must still have the appropriate drivers installed for VAAPI to work.
+There will be two builds created for each architecture: one with VAAPI support enabled, and one without. The goal will be to eventually update the Owncast installer script to download the VAAPI-enabled build if the target machine supports it. If the target machine without VAAPI support were to download a VAAPI-enabled build, ffmpeg would crash, as it would try to dynamically load the VAAPI libraries, which would not be present on the target machine.
 
 ## Non-free codecs
 
