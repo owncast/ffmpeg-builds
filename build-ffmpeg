@@ -1044,6 +1044,7 @@ if [[ "$OSTYPE" == "linux-gnu" ]]; then
   fi
 
   # Vaapi doesn't work well with static links FFmpeg.
+  # Disabled for static builds to ensure portability
   if [ -z "$LDEXEFLAGS" ]; then
     # If the libva development SDK is installed, enable vaapi.
     if library_exists "libva"; then
@@ -1052,16 +1053,20 @@ if [[ "$OSTYPE" == "linux-gnu" ]]; then
       fi
       CONFIGURE_OPTIONS+=("--enable-vaapi")
     fi
+  else
+    # Explicitly disable vaapi for static builds
+    CONFIGURE_OPTIONS+=("--disable-vaapi")
   fi
 
-  if build "amf" "1.4.35"; then
-    download "https://github.com/GPUOpen-LibrariesAndSDKs/AMF/archive/refs/tags/v$CURRENT_PACKAGE_VERSION.tar.gz" "AMF-$CURRENT_PACKAGE_VERSION.tar.gz" "AMF-$CURRENT_PACKAGE_VERSION"
-    execute rm -rf "${WORKSPACE}/include/AMF"
-    execute mkdir -p "${WORKSPACE}/include/AMF"
-    execute cp -r "${PACKAGES}"/AMF-$CURRENT_PACKAGE_VERSION/AMF-$CURRENT_PACKAGE_VERSION/amf/public/include/* "${WORKSPACE}/include/AMF/"
-    build_done "amf" $CURRENT_PACKAGE_VERSION
-  fi
-  CONFIGURE_OPTIONS+=("--enable-amf")
+  # AMF is only supported on Windows
+  # if build "amf" "1.4.35"; then
+  #   download "https://github.com/GPUOpen-LibrariesAndSDKs/AMF/archive/refs/tags/v$CURRENT_PACKAGE_VERSION.tar.gz" "AMF-$CURRENT_PACKAGE_VERSION.tar.gz" "AMF-$CURRENT_PACKAGE_VERSION"
+  #   execute rm -rf "${WORKSPACE}/include/AMF"
+  #   execute mkdir -p "${WORKSPACE}/include/AMF"
+  #   execute cp -r "${PACKAGES}"/AMF-$CURRENT_PACKAGE_VERSION/AMF-$CURRENT_PACKAGE_VERSION/amf/public/include/* "${WORKSPACE}/include/AMF/"
+  #   build_done "amf" $CURRENT_PACKAGE_VERSION
+  # fi
+  # CONFIGURE_OPTIONS+=("--enable-amf")
 fi
 
 ##
