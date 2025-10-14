@@ -79,7 +79,7 @@ runtime:
 # Default target
 all:
     BUILD +build
-    BUILD +build-vaapi
+    # BUILD +build-vaapi
     BUILD +runtime
 
 multi-platform:
@@ -89,12 +89,12 @@ multi-platform:
     # Copy artifacts from builds and save them locally
     COPY --platform=linux/amd64 (+build/ffmpeg$FFMPEG_VERSION-amd64-static.tar.gz) ./
     COPY --platform=linux/arm64 (+build/ffmpeg$FFMPEG_VERSION-arm64-static.tar.gz) ./
-    COPY --platform=linux/amd64 (+build-vaapi/ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz) ./
-    COPY --platform=linux/arm64 (+build-vaapi/ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz) ./
+    # COPY --platform=linux/amd64 (+build-vaapi/ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz) ./
+    # COPY --platform=linux/arm64 (+build-vaapi/ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz) ./
     
     # Save all to local builds directory
     SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-amd64-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-amd64-static.tar.gz
     SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-arm64-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-arm64-static.tar.gz
-    SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz
-    SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz
+    # SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz
+    # SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz
 
