@@ -27,13 +27,15 @@ build:
 
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
-    RUN ./build-ffmpeg --build --enable-gpl-and-non-free --full-static 
+    RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages \
+        ./build-ffmpeg --build --enable-gpl-and-non-free --full-static 
 
     # Test the binary
     RUN ./workspace/bin/ffmpeg -version
 
     # Save artifacts with explicit paths
     RUN tar -czf /ffmpeg$FFMPEG_VERSION-$TARGETARCH-static.tar.gz -C /app/workspace/bin ffmpeg
+    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH-static.tar.gz
     SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-$TARGETARCH-static.tar.gz
 
 build-vaapi:
@@ -52,13 +54,15 @@ build-vaapi:
 
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
-    RUN ./build-ffmpeg --build --enable-gpl-and-non-free
+    RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages \
+        ./build-ffmpeg --build --enable-gpl-and-non-free
 
     # Test the binary
     RUN ./workspace/bin/ffmpeg -version
 
     # Save artifacts with explicit paths
     RUN tar -czf /ffmpeg$FFMPEG_VERSION-$TARGETARCH-vaapi.tar.gz -C /app/workspace/bin ffmpeg
+    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH-vaapi.tar.gz
     SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-$TARGETARCH-vaapi.tar.gz
 
 runtime:
@@ -79,10 +83,18 @@ all:
     BUILD +runtime
 
 multi-platform:
-    BUILD --platform=linux/amd64 --build-arg SKIPINSTALL=yes +build
-    BUILD --platform=linux/arm64 --build-arg SKIPINSTALL=yes +build
-    BUILD --platform=linux/amd64 --build-arg SKIPINSTALL=yes +build-vaapi
-    BUILD --platform=linux/arm64 --build-arg SKIPINSTALL=yes +build-vaapi
-    BUILD --platform=linux/amd64 +runtime
-    BUILD --platform=linux/arm64 +runtime
+    FROM ubuntu:24.04
+    ARG FFMPEG_VERSION=8.0
+    
+    # Copy artifacts from builds and save them locally
+    COPY --platform=linux/amd64 (+build/ffmpeg$FFMPEG_VERSION-amd64-static.tar.gz) ./
+    COPY --platform=linux/arm64 (+build/ffmpeg$FFMPEG_VERSION-arm64-static.tar.gz) ./
+    COPY --platform=linux/amd64 (+build-vaapi/ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz) ./
+    COPY --platform=linux/arm64 (+build-vaapi/ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz) ./
+    
+    # Save all to local builds directory
+    SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-amd64-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-amd64-static.tar.gz
+    SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-arm64-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-arm64-static.tar.gz
+    SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz
+    SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz
 
