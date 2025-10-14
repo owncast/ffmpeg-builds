@@ -43,7 +43,7 @@ jobs:
           version: latest
 
       - name: Build with Earthly
-        run: earthly --output --ci --use-inline-cache +multi-platform
+        run: earthly --output --ci +multi-platform
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -54,4 +54,4 @@ jobs:
           files: |
             ./builds/*.tar.gz
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_GITHUB_TOKEN }}
