@@ -27,7 +27,7 @@ build:
 
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
-    RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages \
+    RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages-$TARGETARCH \
         ./build-ffmpeg --build --enable-gpl-and-non-free --full-static 
 
     # Test the binary
@@ -54,7 +54,7 @@ build-vaapi:
 
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
-    RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages \
+    RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages-$TARGETARCH \
         ./build-ffmpeg --build --enable-gpl-and-non-free
 
     # Test the binary
