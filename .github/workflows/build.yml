@@ -18,12 +18,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create and push tag
-        run: |
-          git config user.name owncast-ffmpeg-builder
-          git config user.email github-actions@github.com
-          git tag ${{ steps.get-timestamp.outputs.timestamp }}
-          git push --tags
+      # - name: Create and push tag
+      #   run: |
+      #     git config user.name owncast-ffmpeg-builder
+      #     git config user.email github-actions@github.com
+      #     git tag ${{ steps.get-timestamp.outputs.timestamp }}
+      #     git push --tags
 
       - name: Fetch tags again to ensure latest tag is available
         run: git fetch --tags
@@ -54,4 +54,4 @@ jobs:
           files: |
             ./builds/*.tar.gz
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_GITHUB_TOKEN }}
