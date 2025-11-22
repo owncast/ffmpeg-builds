@@ -43,7 +43,7 @@ jobs:
           version: latest
 
       - name: Build with Earthly
-        run: earthly --output --ci --use-inline-cache +multi-platform
+        run: earthly --output --ci --github-annotations --no-cache +multi-platform
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

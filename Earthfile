@@ -52,7 +52,19 @@ build-base:
             python-is-python3 \
             ninja-build \
             meson \
-            git && \
+            git \
+            bash \
+            nasm \
+            yasm \
+            cmake \
+            pkg-config \
+            autoconf \
+            automake \
+            libtool \
+            perl \
+            m4 \
+            coreutils \
+            diffutils && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
 
@@ -91,7 +103,7 @@ build-vaapi:
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
     RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages-glibc-vaapi-$TARGETARCH \
-        ./build-ffmpeg --build --enable-gpl
+        ./build-ffmpeg --build --enable-gpl --latest
 
     # Test the binary
     RUN ./workspace/bin/ffmpeg -version
