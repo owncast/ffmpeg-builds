@@ -1,5 +1,41 @@
 VERSION 0.8
 
+build-base-alpine:
+    FROM alpine:3.19
+    ARG TARGETARCH  # Built-in Earthly variable
+    WORKDIR /app
+
+    # Install build dependencies for static builds with musl
+    # Musl is required because static glibc has broken pthread/threading
+    RUN --mount=type=cache,target=/var/cache/apk \
+        apk add --no-cache \
+            build-base \
+            curl \
+            ca-certificates \
+            python3 \
+            ninja \
+            meson \
+            git \
+            bash \
+            nasm \
+            yasm \
+            cmake \
+            pkgconfig \
+            linux-headers \
+            coreutils \
+            diffutils \
+            perl \
+            m4 \
+            autoconf \
+            automake \
+            libtool \
+            zlib-dev \
+            zlib-static \
+            libogg-dev \
+            openssl-dev \
+            openssl-libs-static \
+            gettext-dev
+
 build-base:
     FROM ubuntu:24.04
     ARG TARGETARCH  # Built-in Earthly variable
@@ -21,14 +57,14 @@ build-base:
         rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
 
 build:
-    FROM +build-base
+    FROM +build-base-alpine
     ARG TARGETARCH  # Built-in Earthly variable
     ARG FFMPEG_VERSION=8.0
 
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
-    RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages-$TARGETARCH \
-        ./build-ffmpeg --build --enable-gpl-and-non-free --full-static 
+    RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages-musl-$TARGETARCH \
+        ./build-ffmpeg --build --enable-gpl --full-static
 
     # Test the binary
     RUN ./workspace/bin/ffmpeg -version
@@ -54,8 +90,8 @@ build-vaapi:
 
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
-    RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages-vaapi-$TARGETARCH \
-        ./build-ffmpeg --build --enable-gpl-and-non-free
+    RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages-glibc-vaapi-$TARGETARCH \
+        ./build-ffmpeg --build --enable-gpl
 
     # Test the binary
     RUN ./workspace/bin/ffmpeg -version
