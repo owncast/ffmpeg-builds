@@ -630,6 +630,27 @@ EOF
   CONFIGURE_OPTIONS+=("--enable-libx265")
 fi
 
+##
+## text rendering library (for drawtext filter)
+##
+
+if build "FreeType2" "2.13.3"; then
+  download "https://downloads.sourceforge.net/freetype/freetype-$CURRENT_PACKAGE_VERSION.tar.xz"
+  execute ./configure --prefix="${WORKSPACE}" --disable-shared --enable-static
+  execute make -j "$MJOBS"
+  execute make install
+  build_done "FreeType2" "$CURRENT_PACKAGE_VERSION"
+fi
+CONFIGURE_OPTIONS+=("--enable-libfreetype")
+
+if build "harfbuzz" "10.1.0"; then
+  download "https://github.com/harfbuzz/harfbuzz/releases/download/$CURRENT_PACKAGE_VERSION/harfbuzz-$CURRENT_PACKAGE_VERSION.tar.xz"
+  execute meson setup build --prefix="${WORKSPACE}" --buildtype=release --default-library=static -Dfreetype=enabled -Dglib=disabled -Dgobject=disabled -Dcairo=disabled -Dicu=disabled -Dtests=disabled -Ddocs=disabled
+  execute ninja -C build
+  execute ninja -C build install
+  build_done "harfbuzz" "$CURRENT_PACKAGE_VERSION"
+fi
+CONFIGURE_OPTIONS+=("--enable-libharfbuzz")
 
 ##
 ## HWaccel library
