@@ -572,9 +572,9 @@ if $NONFREE_AND_GPL; then
     cd "${PACKAGES}"/x264-$CURRENT_PACKAGE_VERSION || exit
 
     if [[ "$OSTYPE" == "linux-gnu" ]]; then
-      execute ./configure --prefix="${WORKSPACE}" --enable-static --enable-pic CXXFLAGS="-fPIC ${CXXFLAGS}"
+      execute ./configure --prefix="${WORKSPACE}" --libdir="${WORKSPACE}/lib" --enable-static --enable-pic CXXFLAGS="-fPIC ${CXXFLAGS}"
     else
-      execute ./configure --prefix="${WORKSPACE}" --enable-static --enable-pic
+      execute ./configure --prefix="${WORKSPACE}" --libdir="${WORKSPACE}/lib" --enable-static --enable-pic
     fi
 
     execute make -j $MJOBS
@@ -593,15 +593,15 @@ if $NONFREE_AND_GPL; then
     rm -rf 8bit 10bit 12bit 2>/dev/null
     mkdir -p 8bit 10bit 12bit
     cd 12bit || exit
-    execute cmake ../../../source -DCMAKE_INSTALL_PREFIX="${WORKSPACE}" -DENABLE_SHARED=OFF -DBUILD_SHARED_LIBS=OFF -DHIGH_BIT_DEPTH=ON -DENABLE_HDR10_PLUS=ON -DEXPORT_C_API=OFF -DENABLE_CLI=OFF -DMAIN12=ON
+    execute cmake ../../../source -DCMAKE_INSTALL_PREFIX="${WORKSPACE}" -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_SHARED=OFF -DBUILD_SHARED_LIBS=OFF -DHIGH_BIT_DEPTH=ON -DENABLE_HDR10_PLUS=ON -DEXPORT_C_API=OFF -DENABLE_CLI=OFF -DMAIN12=ON
     execute make -j $MJOBS
     cd ../10bit || exit
-    execute cmake ../../../source -DCMAKE_INSTALL_PREFIX="${WORKSPACE}" -DENABLE_SHARED=OFF -DBUILD_SHARED_LIBS=OFF -DHIGH_BIT_DEPTH=ON -DENABLE_HDR10_PLUS=ON -DEXPORT_C_API=OFF -DENABLE_CLI=OFF
+    execute cmake ../../../source -DCMAKE_INSTALL_PREFIX="${WORKSPACE}" -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_SHARED=OFF -DBUILD_SHARED_LIBS=OFF -DHIGH_BIT_DEPTH=ON -DENABLE_HDR10_PLUS=ON -DEXPORT_C_API=OFF -DENABLE_CLI=OFF
     execute make -j $MJOBS
     cd ../8bit || exit
     ln -sf ../10bit/libx265.a libx265_main10.a
     ln -sf ../12bit/libx265.a libx265_main12.a
-    execute cmake ../../../source -DCMAKE_INSTALL_PREFIX="${WORKSPACE}" -DENABLE_SHARED=OFF -DBUILD_SHARED_LIBS=OFF -DEXTRA_LIB="x265_main10.a;x265_main12.a;-ldl" -DEXTRA_LINK_FLAGS=-L. -DLINKED_10BIT=ON -DLINKED_12BIT=ON
+    execute cmake ../../../source -DCMAKE_INSTALL_PREFIX="${WORKSPACE}" -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_SHARED=OFF -DBUILD_SHARED_LIBS=OFF -DEXTRA_LIB="x265_main10.a;x265_main12.a;-ldl" -DEXTRA_LINK_FLAGS=-L. -DLINKED_10BIT=ON -DLINKED_12BIT=ON
     execute make -j $MJOBS
 
     mv libx265.a libx265_main.a
@@ -630,6 +630,44 @@ EOF
   CONFIGURE_OPTIONS+=("--enable-libx265")
 fi
 
+##
+## text rendering library (for drawtext filter)
+##
+
+if build "FreeType2" "2.13.3"; then
+  download "https://downloads.sourceforge.net/freetype/freetype-$CURRENT_PACKAGE_VERSION.tar.xz"
+  execute ./configure --prefix="${WORKSPACE}" --libdir="${WORKSPACE}/lib" --disable-shared --enable-static
+  execute make -j "$MJOBS"
+  execute make install
+  build_done "FreeType2" "$CURRENT_PACKAGE_VERSION"
+fi
+CONFIGURE_OPTIONS+=("--enable-libfreetype")
+
+if build "expat" "2.6.4"; then
+  download "https://github.com/libexpat/libexpat/releases/download/R_2_6_4/expat-$CURRENT_PACKAGE_VERSION.tar.xz"
+  execute ./configure --prefix="${WORKSPACE}" --libdir="${WORKSPACE}/lib" --disable-shared --enable-static
+  execute make -j "$MJOBS"
+  execute make install
+  build_done "expat" "$CURRENT_PACKAGE_VERSION"
+fi
+
+if build "fontconfig" "2.15.0"; then
+  download "https://www.freedesktop.org/software/fontconfig/release/fontconfig-$CURRENT_PACKAGE_VERSION.tar.xz"
+  execute ./configure --prefix="${WORKSPACE}" --libdir="${WORKSPACE}/lib" --disable-shared --enable-static --disable-docs --disable-cache-build --disable-nls
+  execute make -j "$MJOBS"
+  execute make install
+  build_done "fontconfig" "$CURRENT_PACKAGE_VERSION"
+fi
+CONFIGURE_OPTIONS+=("--enable-libfontconfig")
+
+if build "harfbuzz" "10.1.0"; then
+  download "https://github.com/harfbuzz/harfbuzz/releases/download/$CURRENT_PACKAGE_VERSION/harfbuzz-$CURRENT_PACKAGE_VERSION.tar.xz"
+  execute meson setup build --prefix="${WORKSPACE}" --libdir=lib --buildtype=release --default-library=static -Dfreetype=enabled -Dglib=disabled -Dgobject=disabled -Dcairo=disabled -Dicu=disabled -Dtests=disabled -Ddocs=disabled
+  execute ninja -C build
+  execute ninja -C build install
+  build_done "harfbuzz" "$CURRENT_PACKAGE_VERSION"
+fi
+CONFIGURE_OPTIONS+=("--enable-libharfbuzz")
 
 ##
 ## HWaccel library
