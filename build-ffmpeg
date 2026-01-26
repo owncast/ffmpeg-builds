@@ -372,7 +372,7 @@ fi
 ##
 
 if build "giflib" "5.2.1"; then
-  download "https://netcologne.dl.sourceforge.net/project/giflib/giflib-$CURRENT_PACKAGE_VERSION.tar.gz"
+  download "https://downloads.sourceforge.net/project/giflib/giflib-$CURRENT_PACKAGE_VERSION.tar.gz"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     download "https://sourceforge.net/p/giflib/bugs/_discuss/thread/4e811ad29b/c323/attachment/Makefile.patch"
     execute patch -p0 --forward "${PACKAGES}/giflib-$CURRENT_PACKAGE_VERSION/Makefile" "${PACKAGES}/Makefile.patch" || true
@@ -571,10 +571,11 @@ if $NONFREE_AND_GPL; then
     download "https://code.videolan.org/videolan/x264/-/archive/$CURRENT_PACKAGE_VERSION/x264-$CURRENT_PACKAGE_VERSION.tar.gz" "x264-$CURRENT_PACKAGE_VERSION.tar.gz"
     cd "${PACKAGES}"/x264-$CURRENT_PACKAGE_VERSION || exit
 
+    # Disable lavf (FFmpeg input) to avoid circular dependency and API compatibility issues
     if [[ "$OSTYPE" == "linux-gnu" ]]; then
-      execute ./configure --prefix="${WORKSPACE}" --libdir="${WORKSPACE}/lib" --enable-static --enable-pic CXXFLAGS="-fPIC ${CXXFLAGS}"
+      execute ./configure --prefix="${WORKSPACE}" --libdir="${WORKSPACE}/lib" --enable-static --enable-pic --disable-lavf --disable-swscale --disable-ffms CXXFLAGS="-fPIC ${CXXFLAGS}"
     else
-      execute ./configure --prefix="${WORKSPACE}" --libdir="${WORKSPACE}/lib" --enable-static --enable-pic
+      execute ./configure --prefix="${WORKSPACE}" --libdir="${WORKSPACE}/lib" --enable-static --enable-pic --disable-lavf --disable-swscale --disable-ffms
     fi
 
     execute make -j $MJOBS

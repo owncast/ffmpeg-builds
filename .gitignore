@@ -6,3 +6,4 @@ linux
 build
 full-static-test.dockerfile
 builds
+test-output.log

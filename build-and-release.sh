@@ -126,9 +126,9 @@ main() {
     if [ "$SKIP_BUILD" = false ]; then
         log_info "Building with Earthly (this may take a while)..."
         if [ "$DRY_RUN" = false ]; then
-            earthly --output --no-cache +multi-platform
+            earthly --output +multi-platform
         else
-            echo "  [DRY-RUN] Would run: earthly --output --no-cache +multi-platform"
+            echo "  [DRY-RUN] Would run: earthly --output +multi-platform"
         fi
     else
         log_warn "Skipping build step (--skip-build specified)"

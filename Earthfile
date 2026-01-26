@@ -73,16 +73,15 @@ build-base:
 build:
     FROM +build-base-alpine
     ARG TARGETARCH  # Built-in Earthly variable
+    ARG TARGETOS    # Built-in Earthly variable
     ARG FFMPEG_VERSION=8.0
 
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
     # Cache both packages (.done files, source) and workspace (installed libs, .pc files)
     # Copy ffmpeg binary out before RUN ends since cache isn't available in subsequent steps
-    # ONE TIME: Clear all .done files to sync caches after adding workspace cache
     RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages-musl-$TARGETARCH \
         --mount=type=cache,target=/app/workspace,id=ffmpeg-workspace-musl-$TARGETARCH \
-        rm -f /app/packages/*.done 2>/dev/null || true && \
         ./build-ffmpeg --build --enable-gpl --full-static && \
         cp -r /app/workspace/bin /app/built-bin
 
@@ -90,13 +89,14 @@ build:
     RUN /app/built-bin/ffmpeg -version
 
     # Save artifacts with explicit paths
-    RUN tar -czf /ffmpeg$FFMPEG_VERSION-$TARGETARCH-static.tar.gz -C /app/built-bin ffmpeg
-    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH-static.tar.gz
-    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-$TARGETARCH-static.tar.gz
+    RUN tar -czf /ffmpeg$FFMPEG_VERSION-$TARGETOS-$TARGETARCH-static.tar.gz -C /app/built-bin ffmpeg
+    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETOS-$TARGETARCH-static.tar.gz
+    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETOS-$TARGETARCH-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-$TARGETOS-$TARGETARCH-static.tar.gz
 
 build-vaapi:
     FROM +build-base
     ARG TARGETARCH  # Built-in Earthly variable
+    ARG TARGETOS    # Built-in Earthly variable
     ARG FFMPEG_VERSION=8.0
 
     # Install vaapi-specific dependencies
@@ -111,10 +111,8 @@ build-vaapi:
     COPY ./build-ffmpeg ./build-ffmpeg
     ARG SKIPINSTALL=yes
     # Cache both packages and workspace, copy binary out for subsequent steps
-    # ONE TIME: Clear all .done files to sync caches after adding workspace cache
     RUN --mount=type=cache,target=/app/packages,id=ffmpeg-packages-glibc-vaapi-$TARGETARCH \
         --mount=type=cache,target=/app/workspace,id=ffmpeg-workspace-glibc-vaapi-$TARGETARCH \
-        rm -f /app/packages/*.done 2>/dev/null || true && \
         ./build-ffmpeg --build --enable-gpl --latest && \
         cp -r /app/workspace/bin /app/built-bin
 
@@ -122,9 +120,9 @@ build-vaapi:
     RUN /app/built-bin/ffmpeg -version
 
     # Save artifacts with explicit paths
-    RUN tar -czf /ffmpeg$FFMPEG_VERSION-$TARGETARCH-vaapi.tar.gz -C /app/built-bin ffmpeg
-    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH-vaapi.tar.gz
-    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETARCH-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-$TARGETARCH-vaapi.tar.gz
+    RUN tar -czf /ffmpeg$FFMPEG_VERSION-$TARGETOS-$TARGETARCH-vaapi.tar.gz -C /app/built-bin ffmpeg
+    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETOS-$TARGETARCH-vaapi.tar.gz
+    SAVE ARTIFACT /ffmpeg$FFMPEG_VERSION-$TARGETOS-$TARGETARCH-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-$TARGETOS-$TARGETARCH-vaapi.tar.gz
 
 runtime:
     FROM ubuntu:24.04
@@ -137,11 +135,24 @@ runtime:
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-# Default target
+# Default target (Linux only - darwin requires macOS SDK)
 all:
     BUILD +build
     BUILD +build-vaapi
     BUILD +runtime
+
+# Build all platforms including darwin (requires macos-sdk/MacOSX14.0.sdk.tar.xz)
+all-platforms:
+    BUILD +build
+    BUILD +build-vaapi
+    BUILD +build-darwin --DARWIN_TARGETARCH=amd64
+    BUILD +build-darwin --DARWIN_TARGETARCH=arm64
+    BUILD +runtime
+
+# Build darwin targets only (requires macos-sdk/MacOSX14.0.sdk.tar.xz)
+darwin:
+    BUILD +build-darwin --DARWIN_TARGETARCH=amd64
+    BUILD +build-darwin --DARWIN_TARGETARCH=arm64
 
 # Quick debug target for Alpine (static build)
 debug-harfbuzz-alpine:
@@ -300,19 +311,180 @@ debug-harfbuzz:
             --prefix="/app/workspace" && \
         echo "SUCCESS: ffmpeg configure completed with freetype, fontconfig, and harfbuzz!"
 
+# Darwin build using ghcr.io/gabek/go-crosscompile (has osxcross pre-configured)
+build-darwin:
+    FROM ghcr.io/gabek/go-crosscompile:latest
+    ARG DARWIN_TARGETARCH  # amd64 or arm64
+    ARG FFMPEG_VERSION=8.0
+
+    # Install additional build dependencies for FFmpeg (Alpine-based image)
+    RUN --mount=type=cache,target=/var/cache/apk \
+        apk add --no-cache \
+            nasm \
+            yasm \
+            meson \
+            ninja \
+            gperf \
+            curl \
+            xz \
+            perl \
+            file \
+            cmake \
+            make \
+            pkgconfig
+
+    # Map architecture names for osxcross (darwin23.5 SDK)
+    IF [ "$DARWIN_TARGETARCH" = "amd64" ]
+        ENV OSXCROSS_HOST="x86_64-apple-darwin23.5"
+        ENV DARWIN_ARCH="x86_64"
+    ELSE
+        ENV OSXCROSS_HOST="aarch64-apple-darwin23.5"
+        ENV DARWIN_ARCH="arm64"
+    END
+
+    WORKDIR /app
+    RUN mkdir -p workspace packages
+
+    # Set cross-compilation environment (osxcross is at /osxcross/target/bin)
+    ENV PATH="/osxcross/target/bin:$PATH"
+    ENV CC="${OSXCROSS_HOST}-clang"
+    ENV CXX="${OSXCROSS_HOST}-clang++"
+    ENV AR="${OSXCROSS_HOST}-ar"
+    ENV RANLIB="${OSXCROSS_HOST}-ranlib"
+    ENV STRIP="${OSXCROSS_HOST}-strip"
+    ENV PKG_CONFIG="${OSXCROSS_HOST}-pkg-config"
+    ENV PKG_CONFIG_PATH="/app/workspace/lib/pkgconfig"
+    ENV CFLAGS="-I/app/workspace/include -arch ${DARWIN_ARCH}"
+    ENV LDFLAGS="-L/app/workspace/lib -arch ${DARWIN_ARCH}"
+    ENV MACOSX_DEPLOYMENT_TARGET="11.0"
+    ENV OSXCROSS_PKG_CONFIG_USE_NATIVE_VARIABLES=1
+
+    # Build zlib using cmake (more reliable for cross-compilation)
+    RUN curl -L "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz" -o zlib.tar.gz && \
+        tar xf zlib.tar.gz && \
+        cd zlib-1.3.1 && \
+        mkdir build && cd build && \
+        cmake .. \
+            -DCMAKE_INSTALL_PREFIX="/app/workspace" \
+            -DCMAKE_SYSTEM_NAME=Darwin \
+            -DCMAKE_SYSTEM_PROCESSOR=${DARWIN_ARCH} \
+            -DCMAKE_C_COMPILER=/osxcross/target/bin/${OSXCROSS_HOST}-clang \
+            -DCMAKE_AR=/osxcross/target/bin/${OSXCROSS_HOST}-ar \
+            -DCMAKE_RANLIB=/osxcross/target/bin/${OSXCROSS_HOST}-ranlib \
+            -DCMAKE_OSX_ARCHITECTURES=${DARWIN_ARCH} \
+            -DBUILD_SHARED_LIBS=OFF && \
+        make -j$(nproc) && \
+        make install
+
+    # Build x264
+    RUN curl -L "https://code.videolan.org/videolan/x264/-/archive/be4f0200/x264-be4f0200.tar.gz" -o x264.tar.gz && \
+        tar xf x264.tar.gz && \
+        cd x264-be4f0200* && \
+        ./configure --prefix="/app/workspace" --host=${OSXCROSS_HOST} \
+            --cross-prefix=${OSXCROSS_HOST}- \
+            --enable-static --enable-pic \
+            --extra-cflags="${CFLAGS}" --extra-ldflags="${LDFLAGS}" && \
+        make -j$(nproc) && \
+        make install
+
+    # Build x265
+    RUN curl -L "https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.0.tar.gz" -o x265.tar.gz && \
+        tar xf x265.tar.gz && \
+        cd x265_4.0/build/linux && \
+        cmake ../../source \
+            -DCMAKE_INSTALL_PREFIX="/app/workspace" \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DCMAKE_SYSTEM_NAME=Darwin \
+            -DCMAKE_SYSTEM_PROCESSOR=${DARWIN_ARCH} \
+            -DCMAKE_C_COMPILER=/osxcross/target/bin/${OSXCROSS_HOST}-clang \
+            -DCMAKE_CXX_COMPILER=/osxcross/target/bin/${OSXCROSS_HOST}-clang++ \
+            -DCMAKE_AR=/osxcross/target/bin/${OSXCROSS_HOST}-ar \
+            -DCMAKE_RANLIB=/osxcross/target/bin/${OSXCROSS_HOST}-ranlib \
+            -DCMAKE_OSX_ARCHITECTURES=${DARWIN_ARCH} \
+            -DENABLE_SHARED=OFF \
+            -DENABLE_CLI=OFF && \
+        make -j$(nproc) && \
+        make install && \
+        sed -i 's/-lc++ -lrt -ldl/-lc++/g' /app/workspace/lib/pkgconfig/x265.pc
+
+    # Build FreeType2
+    RUN curl -L "https://downloads.sourceforge.net/freetype/freetype-2.13.3.tar.xz" -o freetype.tar.xz && \
+        tar xf freetype.tar.xz && \
+        cd freetype-2.13.3 && \
+        ./configure --prefix="/app/workspace" --host=${OSXCROSS_HOST} \
+            --disable-shared --enable-static && \
+        make -j$(nproc) && \
+        make install
+
+    # Build FFmpeg
+    RUN curl -L "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/release/${FFMPEG_VERSION}.tar.gz" -o ffmpeg.tar.gz && \
+        tar xf ffmpeg.tar.gz && \
+        cd FFmpeg-release-${FFMPEG_VERSION} && \
+        export PKG_CONFIG_PATH="/app/workspace/lib/pkgconfig" && \
+        ./configure \
+            --prefix="/app/workspace" \
+            --arch=${DARWIN_ARCH} \
+            --target-os=darwin \
+            --cross-prefix=${OSXCROSS_HOST}- \
+            --cc="/osxcross/target/bin/${OSXCROSS_HOST}-clang" \
+            --cxx="/osxcross/target/bin/${OSXCROSS_HOST}-clang++" \
+            --ar="/osxcross/target/bin/${OSXCROSS_HOST}-ar" \
+            --ranlib="/osxcross/target/bin/${OSXCROSS_HOST}-ranlib" \
+            --strip="/osxcross/target/bin/${OSXCROSS_HOST}-strip" \
+            --enable-cross-compile \
+            --enable-gpl \
+            --enable-version3 \
+            --enable-static \
+            --disable-shared \
+            --disable-debug \
+            --enable-libx264 \
+            --enable-libx265 \
+            --enable-libfreetype \
+            --disable-videotoolbox \
+            --extra-cflags="-I/app/workspace/include" \
+            --extra-ldflags="-L/app/workspace/lib" \
+            --pkg-config="pkg-config" \
+            --pkg-config-flags="--static" && \
+        make -j$(nproc) && \
+        make install
+
+    # Test that the binary was built (can't run it on Linux)
+    RUN file /app/workspace/bin/ffmpeg
+
+    # Package the artifact
+    RUN tar -czf /ffmpeg${FFMPEG_VERSION}-darwin-${DARWIN_TARGETARCH}.tar.gz -C /app/workspace/bin ffmpeg
+    SAVE ARTIFACT /ffmpeg${FFMPEG_VERSION}-darwin-${DARWIN_TARGETARCH}.tar.gz
+    SAVE ARTIFACT /ffmpeg${FFMPEG_VERSION}-darwin-${DARWIN_TARGETARCH}.tar.gz AS LOCAL ./builds/ffmpeg${FFMPEG_VERSION}-darwin-${DARWIN_TARGETARCH}.tar.gz
+
+# Multi-platform build for Linux only
+multi-platform-linux:
+    FROM ubuntu:24.04
+    ARG FFMPEG_VERSION=8.0
+
+    # Copy artifacts from Linux builds and save them locally
+    FOR arch IN amd64 arm64
+        COPY --platform=linux/$arch (+build/ffmpeg$FFMPEG_VERSION-linux-$arch-static.tar.gz) ./
+        COPY --platform=linux/$arch (+build-vaapi/ffmpeg$FFMPEG_VERSION-linux-$arch-vaapi.tar.gz) ./
+        SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-linux-$arch-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-linux-$arch-static.tar.gz
+        SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-linux-$arch-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-linux-$arch-vaapi.tar.gz
+    END
+
+# Multi-platform build including darwin (requires macos-sdk/MacOSX14.0.sdk.tar.xz)
 multi-platform:
     FROM ubuntu:24.04
     ARG FFMPEG_VERSION=8.0
-    
-    # Copy artifacts from builds and save them locally
-    COPY --platform=linux/amd64 (+build/ffmpeg$FFMPEG_VERSION-amd64-static.tar.gz) ./
-    COPY --platform=linux/arm64 (+build/ffmpeg$FFMPEG_VERSION-arm64-static.tar.gz) ./
-    COPY --platform=linux/amd64 (+build-vaapi/ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz) ./
-    COPY --platform=linux/arm64 (+build-vaapi/ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz) ./
-    
-    # Save all to local builds directory
-    SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-amd64-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-amd64-static.tar.gz
-    SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-arm64-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-arm64-static.tar.gz
-    SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-amd64-vaapi.tar.gz
-    SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-arm64-vaapi.tar.gz
+
+    # Copy artifacts from Linux builds
+    FOR arch IN amd64 arm64
+        COPY --platform=linux/$arch (+build/ffmpeg$FFMPEG_VERSION-linux-$arch-static.tar.gz) ./
+        COPY --platform=linux/$arch (+build-vaapi/ffmpeg$FFMPEG_VERSION-linux-$arch-vaapi.tar.gz) ./
+        SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-linux-$arch-static.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-linux-$arch-static.tar.gz
+        SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-linux-$arch-vaapi.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-linux-$arch-vaapi.tar.gz
+    END
+
+    # Copy artifacts from Darwin builds (cross-compiled)
+    FOR arch IN amd64 arm64
+        COPY (+build-darwin/ffmpeg$FFMPEG_VERSION-darwin-$arch.tar.gz --DARWIN_TARGETARCH=$arch) ./
+        SAVE ARTIFACT ./ffmpeg$FFMPEG_VERSION-darwin-$arch.tar.gz AS LOCAL ./builds/ffmpeg$FFMPEG_VERSION-darwin-$arch.tar.gz
+    END
 
