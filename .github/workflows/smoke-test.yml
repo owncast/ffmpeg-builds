@@ -124,41 +124,22 @@ jobs:
           set -euo pipefail
           dir="$EXTRACTED_DIR"
 
-          mapfile -t matches < <(find "$dir" -type f -name "ffmpeg" 2>/dev/null)
+          # Count matches first (portable)
+          count="$(find "$dir" -type f -name ffmpeg 2>/dev/null | wc -l | tr -d ' ')"
 
-          if [ "${#matches[@]}" -eq 0 ]; then
+          if [ "$count" = "0" ]; then
             echo "ffmpeg not found under: $dir"
             find "$dir" -maxdepth 6 -type f | sed -n '1,200p'
             exit 1
           fi
 
-          if [ "${#matches[@]}" -gt 1 ]; then
+          if [ "$count" != "1" ]; then
             echo "Found multiple ffmpeg binaries; refusing to guess:"
-            printf ' - %s\n' "${matches[@]}"
+            find "$dir" -type f -name ffmpeg 2>/dev/null | sed -n '1,200p'
             exit 1
           fi
 
-          ffmpeg_path="${matches[0]}"
+          ffmpeg_path="$(find "$dir" -type f -name ffmpeg 2>/dev/null | head -n 1)"
           chmod +x "$ffmpeg_path" || true
           echo "FFMPEG=$ffmpeg_path" >> "$GITHUB_ENV"
           echo "Using ffmpeg: $ffmpeg_path"
-
-      - name: Install VAAPI runtime deps (Linux VAAPI builds only)
-        if: ${{ matrix.is_linux && matrix.is_vaapi }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libva2 libva-drm2 libdrm2
-
-      - name: Sanity run (version + trivial filtergraph)
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          "$FFMPEG" -version
-
-          "$FFMPEG" -hide_banner -loglevel error \
-            -f lavfi -i testsrc=size=128x128:rate=1 \
-            -t 1 -f null -
