@@ -143,3 +143,12 @@ jobs:
           chmod +x "$ffmpeg_path" || true
           echo "FFMPEG=$ffmpeg_path" >> "$GITHUB_ENV"
           echo "Using ffmpeg: $ffmpeg_path"
+
+      - name: Smoke test (encode + mux to stdout)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          "$FFMPEG" -hide_banner -loglevel error \
+            -f lavfi -i testsrc=size=128x128:rate=30 \
+            -t 1 -c:v libx264 -f mp4 -movflags frag_keyframe+empty_moov pipe:1 > /dev/null
