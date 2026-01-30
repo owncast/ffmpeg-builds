@@ -1,0 +1,153 @@
+name: Test release assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to test (defaults to latest)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  enumerate-assets:
+    name: Enumerate release assets
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.mk.outputs.matrix }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Determine tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.tag || '' }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.release.tag_name || '' }}" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build test matrix from release assets
+        id: mk
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="${{ steps.tag.outputs.tag }}"
+          if [ "$TAG" = "latest" ]; then
+            release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest")"
+          else
+            release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}")"
+          fi
+
+          # We only care about the tar.gz build artifacts, not checksums.
+          matrix="$(jq -n --argjson rel "$release_json" '
+            def lc: ascii_downcase;
+
+            [ $rel.assets[] as $a
+              | ($a.name|lc) as $n
+              | select($n|test("^ffmpeg.*\\.tar\\.gz$"))
+              | (
+                  if ($n|test("-darwin-amd64\\.tar\\.gz$")) then "macos-15-intel"
+                  elif ($n|test("-darwin-arm64\\.tar\\.gz$")) then "macos-15"
+                  elif ($n|test("-linux-amd64-")) then "ubuntu-latest"
+                  elif ($n|test("-linux-arm64-")) then "ubuntu-24.04-arm"
+                  else null end
+                ) as $runs_on
+              | select($runs_on != null)
+              | {
+                  asset_name: $a.name,
+                  asset_api_url: $a.url,
+                  runs_on: $runs_on,
+                  is_linux: ($n|test("-linux-")),
+                  is_vaapi: ($n|test("-vaapi\\.tar\\.gz$"))
+                }
+            ] | { include: . }
+          ')"
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  test-asset:
+    name: Test ${{ matrix.asset_name }} on ${{ matrix.runs_on }}
+    needs: enumerate-assets
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.enumerate-assets.outputs.matrix) }}
+
+    steps:
+      - name: Download release asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh api "${{ matrix.asset_api_url }}" -H "Accept: application/octet-stream" > "dist/${{ matrix.asset_name }}"
+          ls -lah dist
+
+      - name: Extract archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          mkdir -p extracted
+          tar -xzf "${{ matrix.asset_name }}" -C extracted
+          echo "EXTRACTED_DIR=$PWD/extracted" >> "$GITHUB_ENV"
+          find extracted -maxdepth 3 -type f | sed -n '1,200p'
+
+      - name: Locate ffmpeg binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="$EXTRACTED_DIR"
+
+          mapfile -t matches < <(find "$dir" -type f -name "ffmpeg" 2>/dev/null)
+
+          if [ "${#matches[@]}" -eq 0 ]; then
+            echo "ffmpeg not found under: $dir"
+            find "$dir" -maxdepth 4 -type f | sed -n '1,200p'
+            exit 1
+          fi
+
+          if [ "${#matches[@]}" -gt 1 ]; then
+            echo "Found multiple ffmpeg binaries; refusing to guess:"
+            printf ' - %s\n' "${matches[@]}"
+            exit 1
+          fi
+
+          ffmpeg_path="${matches[0]}"
+          chmod +x "$ffmpeg_path" || true
+          echo "FFMPEG=$ffmpeg_path" >> "$GITHUB_ENV"
+          echo "Using ffmpeg: $ffmpeg_path"
+
+      - name: Install VAAPI runtime deps (Linux VAAPI builds only)
+        if: ${{ matrix.is_linux && matrix.is_vaapi }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # Minimal runtime libs so the binary can start (even if we don't use VAAPI).
+          sudo apt-get install -y --no-install-recommends \
+            libva2 libva-drm2 libdrm2
+
+      - name: Sanity run (version + trivial filtergraph)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          "$FFMPEG" -version
+
+          # Prove it can execute and run a minimal pipeline.
+          "$FFMPEG" -hide_banner -loglevel error \
+            -f lavfi -i testsrc=size=128x128:rate=1 \
+            -t 1 -f null -
