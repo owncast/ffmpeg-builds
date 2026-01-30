@@ -49,8 +49,8 @@ jobs:
             release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}")"
           fi
 
-          # We only care about the tar.gz build artifacts, not checksums.
-          matrix="$(jq -n --argjson rel "$release_json" '
+          # Compact JSON (single line) so it can be safely passed through outputs.
+          matrix="$(jq -c -n --argjson rel "$release_json" '
             def lc: ascii_downcase;
 
             [ $rel.assets[] as $a
@@ -74,7 +74,20 @@ jobs:
             ] | { include: . }
           ')"
 
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          # Fail early if nothing matched (helps catch naming changes).
+          if [ "$(jq -r '.include | length' <<<"$matrix")" = "0" ]; then
+            echo "No matching ffmpeg tar.gz assets found for tag '$TAG'."
+            echo "Release assets were:"
+            jq -r '.assets[].name' <<<"$release_json" || true
+            exit 1
+          fi
+
+          # Write output safely (delimiter form).
+          {
+            echo "matrix<<EOF"
+            echo "$matrix"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
   test-asset:
     name: Test ${{ matrix.asset_name }} on ${{ matrix.runs_on }}
@@ -103,7 +116,7 @@ jobs:
           mkdir -p extracted
           tar -xzf "${{ matrix.asset_name }}" -C extracted
           echo "EXTRACTED_DIR=$PWD/extracted" >> "$GITHUB_ENV"
-          find extracted -maxdepth 3 -type f | sed -n '1,200p'
+          find extracted -maxdepth 4 -type f | sed -n '1,200p'
 
       - name: Locate ffmpeg binary
         shell: bash
@@ -115,7 +128,7 @@ jobs:
 
           if [ "${#matches[@]}" -eq 0 ]; then
             echo "ffmpeg not found under: $dir"
-            find "$dir" -maxdepth 4 -type f | sed -n '1,200p'
+            find "$dir" -maxdepth 6 -type f | sed -n '1,200p'
             exit 1
           fi
 
@@ -136,7 +149,6 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          # Minimal runtime libs so the binary can start (even if we don't use VAAPI).
           sudo apt-get install -y --no-install-recommends \
             libva2 libva-drm2 libdrm2
 
@@ -147,7 +159,6 @@ jobs:
 
           "$FFMPEG" -version
 
-          # Prove it can execute and run a minimal pipeline.
           "$FFMPEG" -hide_banner -loglevel error \
             -f lavfi -i testsrc=size=128x128:rate=1 \
             -t 1 -f null -
