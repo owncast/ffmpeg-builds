@@ -333,6 +333,10 @@ build-darwin:
             make \
             pkgconfig
 
+    # Install rcodesign for ad-hoc code signing (required for macOS arm64 binaries)
+    RUN curl -sL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz" | \
+        tar xz -C /usr/local/bin --strip-components=1 apple-codesign-0.29.0-x86_64-unknown-linux-musl/rcodesign
+
     # Map architecture names for osxcross (darwin23.5 SDK)
     IF [ "$DARWIN_TARGETARCH" = "amd64" ]
         ENV OSXCROSS_HOST="x86_64-apple-darwin23.5"
@@ -360,6 +364,7 @@ build-darwin:
     ENV OSXCROSS_PKG_CONFIG_USE_NATIVE_VARIABLES=1
 
     # Build zlib using cmake (more reliable for cross-compilation)
+    # Remove any dylibs after install to ensure only static linking
     RUN curl -L "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz" -o zlib.tar.gz && \
         tar xf zlib.tar.gz && \
         cd zlib-1.3.1 && \
@@ -374,7 +379,8 @@ build-darwin:
             -DCMAKE_OSX_ARCHITECTURES=${DARWIN_ARCH} \
             -DBUILD_SHARED_LIBS=OFF && \
         make -j$(nproc) && \
-        make install
+        make install && \
+        rm -f /app/workspace/lib/libz*.dylib
 
     # Build x264
     RUN curl -L "https://code.videolan.org/videolan/x264/-/archive/be4f0200/x264-be4f0200.tar.gz" -o x264.tar.gz && \
@@ -447,6 +453,9 @@ build-darwin:
             --pkg-config-flags="--static" && \
         make -j$(nproc) && \
         make install
+
+    # Ad-hoc code sign the binary (required for macOS arm64)
+    RUN rcodesign sign /app/workspace/bin/ffmpeg
 
     # Test that the binary was built (can't run it on Linux)
     RUN file /app/workspace/bin/ffmpeg
