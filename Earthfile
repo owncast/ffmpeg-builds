@@ -317,24 +317,10 @@ build-darwin:
     ARG DARWIN_TARGETARCH  # amd64 or arm64
     ARG FFMPEG_VERSION=8.0
 
-    # Install additional build dependencies for FFmpeg (Alpine-based image)
-    RUN --mount=type=cache,target=/var/cache/apk \
-        apk add --no-cache \
-            nasm \
-            yasm \
-            meson \
-            ninja \
-            gperf \
-            curl \
-            xz \
-            perl \
-            file \
-            cmake \
-            make \
-            pkgconfig
-
-    # Install rcodesign for ad-hoc code signing (required for macOS arm64 binaries)
-    RUN curl -sL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz" | \
+    # Install build dependencies and rcodesign in a single layer to minimize snapshots
+    RUN apk add --no-cache \
+            nasm yasm meson ninja gperf curl xz perl file cmake make pkgconfig && \
+        curl -sL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz" | \
         tar xz -C /usr/local/bin --strip-components=1 apple-codesign-0.29.0-x86_64-unknown-linux-musl/rcodesign
 
     # Map architecture names for osxcross (darwin23.5 SDK)
@@ -347,7 +333,6 @@ build-darwin:
     END
 
     WORKDIR /app
-    RUN mkdir -p workspace packages
 
     # Set cross-compilation environment (osxcross is at /osxcross/target/bin)
     ENV PATH="/osxcross/target/bin:$PATH"
@@ -363,12 +348,14 @@ build-darwin:
     ENV MACOSX_DEPLOYMENT_TARGET="11.0"
     ENV OSXCROSS_PKG_CONFIG_USE_NATIVE_VARIABLES=1
 
-    # Build zlib using cmake (more reliable for cross-compilation)
-    # Remove any dylibs after install to ensure only static linking
-    RUN curl -L "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz" -o zlib.tar.gz && \
+    # Build all dependencies and FFmpeg in a single RUN to minimize snapshot layers
+    # (the osxcross base image is very large, so each layer is expensive on disk)
+    RUN set -e && \
+        mkdir -p workspace packages && \
+        # Build zlib
+        curl -L "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz" -o zlib.tar.gz && \
         tar xf zlib.tar.gz && \
-        cd zlib-1.3.1 && \
-        mkdir build && cd build && \
+        cd zlib-1.3.1 && mkdir build && cd build && \
         cmake .. \
             -DCMAKE_INSTALL_PREFIX="/app/workspace" \
             -DCMAKE_SYSTEM_NAME=Darwin \
@@ -378,23 +365,21 @@ build-darwin:
             -DCMAKE_RANLIB=/osxcross/target/bin/${OSXCROSS_HOST}-ranlib \
             -DCMAKE_OSX_ARCHITECTURES=${DARWIN_ARCH} \
             -DBUILD_SHARED_LIBS=OFF && \
-        make -j$(nproc) && \
-        make install && \
-        rm -f /app/workspace/lib/libz*.dylib
-
-    # Build x264
-    RUN curl -L "https://code.videolan.org/videolan/x264/-/archive/be4f0200/x264-be4f0200.tar.gz" -o x264.tar.gz && \
+        make -j$(nproc) && make install && \
+        rm -f /app/workspace/lib/libz*.dylib && \
+        cd /app && rm -rf zlib* && \
+        # Build x264
+        curl -L "https://code.videolan.org/videolan/x264/-/archive/be4f0200/x264-be4f0200.tar.gz" -o x264.tar.gz && \
         tar xf x264.tar.gz && \
         cd x264-be4f0200* && \
         ./configure --prefix="/app/workspace" --host=${OSXCROSS_HOST} \
             --cross-prefix=${OSXCROSS_HOST}- \
             --enable-static --enable-pic \
             --extra-cflags="${CFLAGS}" --extra-ldflags="${LDFLAGS}" && \
-        make -j$(nproc) && \
-        make install
-
-    # Build x265
-    RUN curl -L "https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.0.tar.gz" -o x265.tar.gz && \
+        make -j$(nproc) && make install && \
+        cd /app && rm -rf x264* && \
+        # Build x265
+        curl -L "https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.0.tar.gz" -o x265.tar.gz && \
         tar xf x265.tar.gz && \
         cd x265_4.0/build/linux && \
         cmake ../../source \
@@ -409,21 +394,19 @@ build-darwin:
             -DCMAKE_OSX_ARCHITECTURES=${DARWIN_ARCH} \
             -DENABLE_SHARED=OFF \
             -DENABLE_CLI=OFF && \
-        make -j$(nproc) && \
-        make install && \
-        sed -i 's/-lc++ -lrt -ldl/-lc++/g' /app/workspace/lib/pkgconfig/x265.pc
-
-    # Build FreeType2
-    RUN curl -L "https://downloads.sourceforge.net/freetype/freetype-2.13.3.tar.xz" -o freetype.tar.xz && \
+        make -j$(nproc) && make install && \
+        sed -i 's/-lc++ -lrt -ldl/-lc++/g' /app/workspace/lib/pkgconfig/x265.pc && \
+        cd /app && rm -rf x265* && \
+        # Build FreeType2
+        curl -L "https://downloads.sourceforge.net/freetype/freetype-2.13.3.tar.xz" -o freetype.tar.xz && \
         tar xf freetype.tar.xz && \
         cd freetype-2.13.3 && \
         ./configure --prefix="/app/workspace" --host=${OSXCROSS_HOST} \
             --disable-shared --enable-static && \
-        make -j$(nproc) && \
-        make install
-
-    # Build FFmpeg
-    RUN curl -L "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/release/${FFMPEG_VERSION}.tar.gz" -o ffmpeg.tar.gz && \
+        make -j$(nproc) && make install && \
+        cd /app && rm -rf freetype* && \
+        # Build FFmpeg
+        curl -L "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/release/${FFMPEG_VERSION}.tar.gz" -o ffmpeg.tar.gz && \
         tar xf ffmpeg.tar.gz && \
         cd FFmpeg-release-${FFMPEG_VERSION} && \
         export PKG_CONFIG_PATH="/app/workspace/lib/pkgconfig" && \
@@ -451,14 +434,12 @@ build-darwin:
             --extra-ldflags="-L/app/workspace/lib" \
             --pkg-config="pkg-config" \
             --pkg-config-flags="--static" && \
-        make -j$(nproc) && \
-        make install
-
-    # Ad-hoc code sign the binary (required for macOS arm64)
-    RUN rcodesign sign /app/workspace/bin/ffmpeg
-
-    # Test that the binary was built (can't run it on Linux)
-    RUN file /app/workspace/bin/ffmpeg
+        make -j$(nproc) && make install && \
+        cd /app && rm -rf ffmpeg* FFmpeg* && \
+        # Ad-hoc code sign the binary (required for macOS arm64)
+        rcodesign sign /app/workspace/bin/ffmpeg && \
+        # Verify the binary was built
+        file /app/workspace/bin/ffmpeg
 
     # Package the artifact
     RUN tar -czf /ffmpeg${FFMPEG_VERSION}-darwin-${DARWIN_TARGETARCH}.tar.gz -C /app/workspace/bin ffmpeg
