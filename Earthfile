@@ -405,11 +405,53 @@ build-darwin:
             --disable-shared --enable-static && \
         make -j$(nproc) && make install && \
         cd /app && rm -rf freetype* && \
+        # Build expat (fontconfig dependency)
+        curl -L "https://github.com/libexpat/libexpat/releases/download/R_2_6_4/expat-2.6.4.tar.xz" -o expat.tar.xz && \
+        tar xf expat.tar.xz && \
+        cd expat-2.6.4 && \
+        ./configure --prefix="/app/workspace" --host=${OSXCROSS_HOST} \
+            --disable-shared --enable-static && \
+        make -j$(nproc) && make install && \
+        cd /app && rm -rf expat* && \
+        # Build fontconfig (for font discovery)
+        curl -L "https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.xz" -o fontconfig.tar.xz && \
+        tar xf fontconfig.tar.xz && \
+        cd fontconfig-2.15.0 && \
+        ./configure --prefix="/app/workspace" --host=${OSXCROSS_HOST} \
+            --disable-shared --enable-static \
+            --disable-docs --disable-cache-build --disable-nls && \
+        make -j$(nproc) && make install && \
+        cd /app && rm -rf fontconfig* && \
+        # Build harfbuzz (for text shaping, using cmake for cross-compilation)
+        curl -L "https://github.com/harfbuzz/harfbuzz/releases/download/10.1.0/harfbuzz-10.1.0.tar.xz" -o harfbuzz.tar.xz && \
+        tar xf harfbuzz.tar.xz && \
+        cd harfbuzz-10.1.0 && mkdir build && cd build && \
+        cmake .. \
+            -DCMAKE_INSTALL_PREFIX="/app/workspace" \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DCMAKE_SYSTEM_NAME=Darwin \
+            -DCMAKE_SYSTEM_PROCESSOR=${DARWIN_ARCH} \
+            -DCMAKE_C_COMPILER=/osxcross/target/bin/${OSXCROSS_HOST}-clang \
+            -DCMAKE_CXX_COMPILER=/osxcross/target/bin/${OSXCROSS_HOST}-clang++ \
+            -DCMAKE_AR=/osxcross/target/bin/${OSXCROSS_HOST}-ar \
+            -DCMAKE_RANLIB=/osxcross/target/bin/${OSXCROSS_HOST}-ranlib \
+            -DCMAKE_OSX_ARCHITECTURES=${DARWIN_ARCH} \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DHB_HAVE_FREETYPE=ON \
+            -DHB_HAVE_GLIB=OFF \
+            -DHB_HAVE_GOBJECT=OFF \
+            -DHB_HAVE_CAIRO=OFF \
+            -DHB_HAVE_ICU=OFF \
+            -DHB_HAVE_CORETEXT=OFF \
+            -DHB_BUILD_TESTS=OFF \
+            -DCMAKE_PREFIX_PATH=/app/workspace && \
+        make -j$(nproc) && make install && \
+        cd /app && rm -rf harfbuzz* && \
         # Build FFmpeg
         curl -L "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/release/${FFMPEG_VERSION}.tar.gz" -o ffmpeg.tar.gz && \
         tar xf ffmpeg.tar.gz && \
         cd FFmpeg-release-${FFMPEG_VERSION} && \
-        export PKG_CONFIG_PATH="/app/workspace/lib/pkgconfig" && \
+        export PKG_CONFIG_PATH="/app/workspace/lib/pkgconfig:/app/workspace/share/pkgconfig" && \
         ./configure \
             --prefix="/app/workspace" \
             --arch=${DARWIN_ARCH} \
@@ -429,6 +471,8 @@ build-darwin:
             --enable-libx264 \
             --enable-libx265 \
             --enable-libfreetype \
+            --enable-libfontconfig \
+            --enable-libharfbuzz \
             --disable-videotoolbox \
             --extra-cflags="-I/app/workspace/include" \
             --extra-ldflags="-L/app/workspace/lib" \
